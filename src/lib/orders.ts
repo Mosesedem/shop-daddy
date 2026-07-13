@@ -121,7 +121,6 @@ export async function fetchOrdersForEmail(email: string): Promise<Order[]> {
   log.event("orders:list-for-email", { email });
   const result = await requirePaperDB().orders.find({
     filter: { email },
-    sort: "-createdAt",
     limit: 25,
   });
   const list = documents<Order>(result);
@@ -132,7 +131,6 @@ export async function fetchOrdersForEmail(email: string): Promise<Order[]> {
 export async function fetchAllOrders(limit = 100): Promise<Order[]> {
   log.event("orders:list-all", { limit });
   const result = await requirePaperDB().orders.find({
-    sort: "-createdAt",
     limit,
   });
   const list = documents<Order>(result);
