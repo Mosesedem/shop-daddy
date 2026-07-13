@@ -1,32 +1,10 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { requirePaperDB } from "./paperdb";
 import { log } from "./logger";
 import { envList } from "./env";
+import { AuthContext, type User } from "./auth-context";
 
-type User = {
-  id: string;
-  email: string;
-  name?: string;
-  role?: string;
-  isAdmin?: boolean;
-};
 type Session = { token?: string; user: User } | null;
-
-type AuthCtx = {
-  user: User | null;
-  loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, name: string) => Promise<void>;
-  signOut: () => Promise<void>;
-};
-
-const Ctx = createContext<AuthCtx | null>(null);
 const STORAGE = "shop.session";
 
 const ADMIN_EMAILS = envList("VITE_ADMIN_EMAILS");
@@ -43,7 +21,11 @@ function isAdminUser(user: User) {
   );
 }
 
-function mapPaperDBUser(raw: unknown, fallbackEmail: string, fallbackName?: string): User {
+function mapPaperDBUser(
+  raw: unknown,
+  fallbackEmail: string,
+  fallbackName?: string,
+): User {
   const user = (raw ?? {}) as {
     id?: string;
     _id?: string;
@@ -154,14 +136,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Ctx.Provider value={{ user, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
       {children}
-    </Ctx.Provider>
+    </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const v = useContext(Ctx);
-  if (!v) throw new Error("useAuth must be used inside AuthProvider");
-  return v;
 }

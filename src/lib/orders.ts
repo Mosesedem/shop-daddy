@@ -24,7 +24,15 @@ export type Order = {
   email: string;
   items: OrderItem[];
   total: number;
-  status: "pending" | "paid" | "failed" | "abandoned";
+  status:
+    | "pending"
+    | "paid"
+    | "processing"
+    | "shipped"
+    | "fulfilled"
+    | "cancelled"
+    | "failed"
+    | "abandoned";
   reference: string;
   shipping: ShippingDetails;
   paymentProvider?: string;
@@ -119,4 +127,27 @@ export async function fetchOrdersForEmail(email: string): Promise<Order[]> {
   const list = documents<Order>(result);
   log.info("orders:list-for-email:loaded", { email, count: list.length });
   return list;
+}
+
+export async function fetchAllOrders(limit = 100): Promise<Order[]> {
+  log.event("orders:list-all", { limit });
+  const result = await requirePaperDB().orders.find({
+    sort: "-createdAt",
+    limit,
+  });
+  const list = documents<Order>(result);
+  log.info("orders:list-all:loaded", { count: list.length });
+  return list;
+}
+
+export async function updateOrder(id: string, patch: Partial<Order>) {
+  log.event("order:update", { id, status: patch.status });
+  return await requirePaperDB().orders.update(id, {
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export function getOrderId(order: Order) {
+  return documentId(order);
 }

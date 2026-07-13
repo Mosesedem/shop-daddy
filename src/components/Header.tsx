@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ShoppingBag, User } from "lucide-react";
 import { useCart } from "@/lib/cart";
-import { useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/use-auth";
 import { log } from "@/lib/logger";
 
 export function Header() {

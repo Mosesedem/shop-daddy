@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/use-auth";
 import { formatNGN } from "@/lib/cart";
 import { log } from "@/lib/logger";
 import { fetchOrdersForEmail, type Order } from "@/lib/orders";

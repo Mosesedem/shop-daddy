@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useCart, formatNGN } from "@/lib/cart";
-import { useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/use-auth";
 import { payWithPaystack } from "@/lib/paystack";
 import { createPendingOrder, markOrderPaid } from "@/lib/orders";
 import { log } from "@/lib/logger";
