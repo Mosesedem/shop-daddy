@@ -1,0 +1,166 @@
+@import "tailwindcss" source(none);
+@source "./src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-cream: var(--cream);
+  --color-clay: var(--clay);
+  --color-espresso: var(--espresso);
+}
+
+:root {
+  --radius: 0.5rem;
+  /* Warm cream & cocoa palette */
+  --background: oklch(0.972 0.014 85); /* warm cream */
+  --foreground: oklch(0.24 0.03 45); /* espresso */
+  --card: oklch(0.985 0.008 85);
+  --card-foreground: oklch(0.24 0.03 45);
+  --popover: oklch(0.985 0.008 85);
+  --popover-foreground: oklch(0.24 0.03 45);
+  --primary: oklch(0.32 0.05 40); /* deep cocoa */
+  --primary-foreground: oklch(0.97 0.014 85);
+  --secondary: oklch(0.93 0.02 80);
+  --secondary-foreground: oklch(0.28 0.04 45);
+  --muted: oklch(0.93 0.015 80);
+  --muted-foreground: oklch(0.5 0.03 55);
+  --accent: oklch(0.62 0.14 45); /* terracotta */
+  --accent-foreground: oklch(0.98 0.014 85);
+  --destructive: oklch(0.55 0.2 27);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.88 0.02 75);
+  --input: oklch(0.88 0.02 75);
+  --ring: oklch(0.62 0.14 45);
+
+  --cream: oklch(0.972 0.014 85);
+  --clay: oklch(0.62 0.14 45);
+  --espresso: oklch(0.24 0.03 45);
+}
+
+.dark {
+  --background: oklch(0.19 0.02 40);
+  --foreground: oklch(0.96 0.014 85);
+  --card: oklch(0.23 0.025 40);
+  --card-foreground: oklch(0.96 0.014 85);
+  --popover: oklch(0.23 0.025 40);
+  --popover-foreground: oklch(0.96 0.014 85);
+  --primary: oklch(0.96 0.014 85);
+  --primary-foreground: oklch(0.23 0.025 40);
+  --secondary: oklch(0.28 0.03 40);
+  --secondary-foreground: oklch(0.96 0.014 85);
+  --muted: oklch(0.28 0.03 40);
+  --muted-foreground: oklch(0.7 0.02 60);
+  --accent: oklch(0.68 0.15 45);
+  --accent-foreground: oklch(0.19 0.02 40);
+  --destructive: oklch(0.6 0.2 27);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.68 0.15 45);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
+
+@utility container-page {
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+@utility btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-lg);
+  font-weight: 500;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
+}
+@utility btn-primary-hover {
+  background: color-mix(in oklab, var(--color-primary), black 8%);
+}
+
+@utility btn-accent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-lg);
+  font-weight: 500;
+}
+
+@utility btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid var(--color-border);
+  color: var(--color-foreground);
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  font-weight: 500;
+}
+
+@utility card-surface {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+}
