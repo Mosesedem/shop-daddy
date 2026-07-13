@@ -1,9 +1,9 @@
 // Unified logger: mirrors every event to console AND Logstack.
 // Docs: https://www.logstack.tech/docs
 import { createLogStack } from "logstack-js";
+import { env } from "./env";
 
-const apiKey =
-  (import.meta.env.VITE_LOGSTACK_API_KEY as string | undefined) ?? "";
+const apiKey = env("LOGSTACK_API_KEY") || env("VITE_LOGSTACK_API_KEY");
 
 let client: ReturnType<typeof createLogStack> | null = null;
 try {
@@ -19,8 +19,7 @@ type Meta = Record<string, unknown> | undefined;
 
 const sessionId =
   typeof window !== "undefined"
-    ? (window.crypto?.randomUUID?.() ??
-      Math.random().toString(36).slice(2))
+    ? (window.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2))
     : "ssr";
 
 function emit(level: Level, message: string, meta?: Meta) {
@@ -32,10 +31,13 @@ function emit(level: Level, message: string, meta?: Meta) {
   // Always console — user requested total console.log coverage.
   const line = `[${level.toUpperCase()}] ${message}`;
   const fn =
-    level === "error" ? console.error
-    : level === "warn" ? console.warn
-    : level === "debug" ? console.debug
-    : console.log;
+    level === "error"
+      ? console.error
+      : level === "warn"
+        ? console.warn
+        : level === "debug"
+          ? console.debug
+          : console.log;
   fn(line, enriched);
 
   // Mirror to Logstack when configured.
@@ -52,18 +54,35 @@ function emit(level: Level, message: string, meta?: Meta) {
   }
 }
 
+function serializeError(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause:
+        error.cause instanceof Error
+          ? serializeError(error.cause)
+          : error.cause,
+    };
+  }
+  return { message: String(error), value: error };
+}
+
 export const log = {
   debug: (m: string, meta?: Meta) => emit("debug", m, meta),
-  info:  (m: string, meta?: Meta) => emit("info", m, meta),
-  warn:  (m: string, meta?: Meta) => emit("warn", m, meta),
+  info: (m: string, meta?: Meta) => emit("info", m, meta),
+  warn: (m: string, meta?: Meta) => emit("warn", m, meta),
   error: (m: string, meta?: Meta) => emit("error", m, meta),
   event: (name: string, meta?: Meta) => emit("info", `event:${name}`, meta),
+  exception: (m: string, error: unknown, meta?: Meta) =>
+    emit("error", m, { ...(meta ?? {}), error: serializeError(error) }),
 };
 
 // Global error hooks (browser only).
 if (typeof window !== "undefined") {
   window.addEventListener("error", (e) => {
-    log.error("window.error", {
+    log.exception("window.error", e.error ?? e.message, {
       message: e.message,
       filename: e.filename,
       lineno: e.lineno,
@@ -71,7 +90,7 @@ if (typeof window !== "undefined") {
     });
   });
   window.addEventListener("unhandledrejection", (e) => {
-    log.error("unhandledrejection", { reason: String(e.reason) });
+    log.exception("unhandledrejection", e.reason);
   });
   log.info("app:boot", { url: window.location.href });
 }

@@ -3,6 +3,7 @@
 // should ideally happen server-side, but this project is intentionally
 // frontend-only per user requirements. We log every event.
 import { log } from "./logger";
+import { env } from "./env";
 
 type PaystackHandler = {
   openIframe: () => void;
@@ -11,20 +12,29 @@ type PaystackPopStatic = {
   setup: (opts: Record<string, unknown>) => PaystackHandler;
 };
 declare global {
-  interface Window { PaystackPop?: PaystackPopStatic }
+  interface Window {
+    PaystackPop?: PaystackPopStatic;
+  }
 }
 
 let loading: Promise<void> | null = null;
 function loadScript(): Promise<void> {
-  if (typeof window === "undefined") return Promise.reject(new Error("no window"));
+  if (typeof window === "undefined")
+    return Promise.reject(new Error("no window"));
   if (window.PaystackPop) return Promise.resolve();
   if (loading) return loading;
   loading = new Promise((resolve, reject) => {
     const s = document.createElement("script");
     s.src = "https://js.paystack.co/v1/inline.js";
     s.async = true;
-    s.onload = () => { log.info("paystack:script:loaded"); resolve(); };
-    s.onerror = () => { log.error("paystack:script:failed"); reject(new Error("Paystack script failed to load")); };
+    s.onload = () => {
+      log.info("paystack:script:loaded");
+      resolve();
+    };
+    s.onerror = () => {
+      log.error("paystack:script:failed");
+      reject(new Error("Paystack script failed to load"));
+    };
     document.head.appendChild(s);
   });
   return loading;
@@ -32,7 +42,7 @@ function loadScript(): Promise<void> {
 
 export type PayInput = {
   email: string;
-  amountNGN: number;    // whole naira; converted to kobo
+  amountNGN: number; // whole naira; converted to kobo
   reference: string;
   onSuccess: (ref: string) => void;
   onCancel?: () => void;
@@ -40,14 +50,16 @@ export type PayInput = {
 };
 
 export async function payWithPaystack(input: PayInput): Promise<void> {
-  const pk = (import.meta.env.VITE_PAYSTACK_PUBLIC_KEY as string | undefined) ?? "";
-  log.event("paystack:start", { reference: input.reference, amountNGN: input.amountNGN, hasKey: Boolean(pk) });
+  const pk = env("VITE_PAYSTACK_PUBLIC_KEY");
+  log.event("paystack:start", {
+    reference: input.reference,
+    amountNGN: input.amountNGN,
+    hasKey: Boolean(pk),
+  });
 
   if (!pk) {
-    // Demo fallback: simulate a successful charge so the UX is completable.
-    log.warn("paystack:no-key:simulating-success");
-    setTimeout(() => input.onSuccess(input.reference), 400);
-    return;
+    log.error("paystack:no-public-key");
+    throw new Error("Paystack public key is not configured.");
   }
 
   await loadScript();

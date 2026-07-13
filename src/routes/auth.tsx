@@ -18,13 +18,15 @@ function AuthPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
     try {
       if (mode === "signin") await signIn(form.email, form.password);
       else await signUp(form.email, form.password, form.name);
       log.info("auth:redirect-after-login");
       navigate({ to: "/account" });
     } catch (err) {
+      log.exception("auth:form:failed", err, { mode });
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setBusy(false);
@@ -33,17 +35,38 @@ function AuthPage() {
 
   return (
     <div className="container-page py-16 md:py-24 max-w-md">
-      <h1 className="font-display text-4xl">{mode === "signin" ? "Welcome back" : "Create an account"}</h1>
+      <h1 className="font-display text-4xl">
+        {mode === "signin" ? "Welcome back" : "Create an account"}
+      </h1>
       <p className="text-muted-foreground mt-2 text-sm">
-        {mode === "signin" ? "Sign in to view your orders and check out faster." : "Save your shipping details and track orders."}
+        {mode === "signin"
+          ? "Sign in to view your orders and check out faster."
+          : "Save your shipping details and track orders."}
       </p>
 
       <form onSubmit={submit} className="mt-8 space-y-4">
         {mode === "signup" && (
-          <Field label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
+          <Field
+            label="Name"
+            value={form.name}
+            onChange={(v) => setForm({ ...form, name: v })}
+            required
+          />
         )}
-        <Field label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} required />
-        <Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} required />
+        <Field
+          label="Email"
+          type="email"
+          value={form.email}
+          onChange={(v) => setForm({ ...form, email: v })}
+          required
+        />
+        <Field
+          label="Password"
+          type="password"
+          value={form.password}
+          onChange={(v) => setForm({ ...form, password: v })}
+          required
+        />
         {error && <div className="text-sm text-destructive">{error}</div>}
         <button className="btn-primary w-full" disabled={busy}>
           {busy ? "…" : mode === "signin" ? "Sign in" : "Create account"}
@@ -52,19 +75,33 @@ function AuthPage() {
 
       <button
         type="button"
-        onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+        onClick={() => {
+          const nextMode = mode === "signin" ? "signup" : "signin";
+          log.event("auth:mode-switch", { nextMode });
+          setMode(nextMode);
+        }}
         className="mt-6 text-sm text-muted-foreground underline underline-offset-4"
       >
-        {mode === "signin" ? "New here? Create an account" : "Already have an account? Sign in"}
+        {mode === "signin"
+          ? "New here? Create an account"
+          : "Already have an account? Sign in"}
       </button>
     </div>
   );
 }
 
-function Field(props: { label: string; value: string; onChange: (v: string) => void; type?: string; required?: boolean }) {
+function Field(props: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  required?: boolean;
+}) {
   return (
     <label className="block">
-      <span className="text-xs uppercase tracking-widest text-muted-foreground">{props.label}</span>
+      <span className="text-xs uppercase tracking-widest text-muted-foreground">
+        {props.label}
+      </span>
       <input
         type={props.type ?? "text"}
         value={props.value}

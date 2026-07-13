@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import "../lib/logger"; // side-effect: attach global handlers, boot log
+import { log } from "../lib/logger";
 import { AuthProvider } from "../lib/auth";
 import { CartProvider } from "../lib/cart";
 import { Header } from "../components/Header";
@@ -37,9 +38,9 @@ function NotFoundComponent() {
 }
 
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
-  console.error(error);
   const router = useRouter();
   useEffect(() => {
+    log.exception("root:error-component", error);
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 

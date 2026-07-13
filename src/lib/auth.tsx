@@ -1,8 +1,21 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { db, paperdbEnabled } from "./paperdb";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+import { requirePaperDB } from "./paperdb";
 import { log } from "./logger";
+import { envList } from "./env";
 
-type User = { id: string; email: string; name?: string; isAdmin?: boolean };
+type User = {
+  id: string;
+  email: string;
+  name?: string;
+  role?: string;
+  isAdmin?: boolean;
+};
 type Session = { token?: string; user: User } | null;
 
 type AuthCtx = {
@@ -16,7 +29,39 @@ type AuthCtx = {
 const Ctx = createContext<AuthCtx | null>(null);
 const STORAGE = "shop.session";
 
-const ADMIN_EMAILS = ["admin@shop.local"]; // demo admin
+const ADMIN_EMAILS = envList("VITE_ADMIN_EMAILS");
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function isAdminUser(user: User) {
+  return (
+    user.isAdmin === true ||
+    user.role === "admin" ||
+    ADMIN_EMAILS.includes(normalizeEmail(user.email))
+  );
+}
+
+function mapPaperDBUser(raw: unknown, fallbackEmail: string, fallbackName?: string): User {
+  const user = (raw ?? {}) as {
+    id?: string;
+    _id?: string;
+    email?: string;
+    name?: string;
+    role?: string;
+    isAdmin?: boolean;
+  };
+  const mapped: User = {
+    id: user.id ?? user._id ?? fallbackEmail,
+    email: user.email ?? fallbackEmail,
+    name: user.name ?? fallbackName,
+    role: user.role,
+    isAdmin: user.isAdmin,
+  };
+  mapped.isAdmin = isAdminUser(mapped);
+  return mapped;
+}
 
 function persist(s: Session) {
   if (typeof window === "undefined") return;
@@ -29,38 +74,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
+    let cancelled = false;
+    async function restore() {
+      log.event("auth:restore:start");
       const raw = window.localStorage.getItem(STORAGE);
-      if (raw) {
-        const s = JSON.parse(raw) as Session;
-        if (s?.user) setUser(s.user);
+      const stored = raw ? (JSON.parse(raw) as Session) : null;
+
+      try {
+        if (stored?.token) {
+          requirePaperDB().auth.setSessionToken?.(stored.token);
+        }
+        const paperUser = await requirePaperDB().auth.getUser();
+        if (paperUser) {
+          const restored = mapPaperDBUser(paperUser, stored?.user.email ?? "");
+          if (!cancelled) setUser(restored);
+          persist({ token: stored?.token, user: restored });
+          log.info("auth:restore:success", { email: restored.email });
+          return;
+        }
+        if (stored?.user) {
+          const restored = {
+            ...stored.user,
+            isAdmin: isAdminUser(stored.user),
+          };
+          if (!cancelled) setUser(restored);
+          log.warn("auth:restore:using-stored-user", { email: restored.email });
+        }
+      } catch (err) {
+        log.exception("auth:restore:failed", err);
+        persist(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+        log.info("auth:ready");
       }
-    } catch (err) {
-      log.warn("auth:restore:failed", { error: String(err) });
-    } finally {
-      setLoading(false);
-      log.info("auth:ready");
     }
+    restore();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function signIn(email: string, password: string) {
     log.event("auth:signin:attempt", { email });
     try {
-      let u: User;
-      if (paperdbEnabled) {
-        const r = await db.auth.signIn({ email, password });
-        u = { id: r.user?.id ?? email, email: r.user?.email ?? email, name: r.user?.name };
-        persist({ token: r.session?.token, user: u });
-      } else {
-        // Local demo fallback
-        u = { id: email, email, name: email.split("@")[0] };
-        persist({ user: u });
-      }
-      u.isAdmin = ADMIN_EMAILS.includes(u.email);
+      const r = await requirePaperDB().auth.signIn({ email, password });
+      const u = mapPaperDBUser(r.user, email);
+      persist({ token: r.session?.token, user: u });
       setUser(u);
       log.info("auth:signin:success", { email });
     } catch (err) {
-      log.error("auth:signin:failed", { error: String(err) });
+      log.exception("auth:signin:failed", err, { email });
       throw err;
     }
   }
@@ -68,20 +131,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signUp(email: string, password: string, name: string) {
     log.event("auth:signup:attempt", { email });
     try {
-      let u: User;
-      if (paperdbEnabled) {
-        const r = await db.auth.signUp({ email, password, name });
-        u = { id: r.user?.id ?? email, email, name };
-        persist({ token: r.session?.token, user: u });
-      } else {
-        u = { id: email, email, name };
-        persist({ user: u });
-      }
-      u.isAdmin = ADMIN_EMAILS.includes(u.email);
+      const r = await requirePaperDB().auth.signUp({ email, password, name });
+      const u = mapPaperDBUser(r.user, email, name);
+      persist({ token: r.session?.token, user: u });
       setUser(u);
       log.info("auth:signup:success", { email });
     } catch (err) {
-      log.error("auth:signup:failed", { error: String(err) });
+      log.exception("auth:signup:failed", err, { email });
       throw err;
     }
   }
@@ -89,9 +145,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signOut() {
     log.event("auth:signout");
     try {
-      if (paperdbEnabled) await db.auth.signOut();
+      await requirePaperDB().auth.signOut();
     } catch (err) {
-      log.warn("auth:signout:sdk:failed", { error: String(err) });
+      log.exception("auth:signout:sdk:failed", err);
     }
     persist(null);
     setUser(null);

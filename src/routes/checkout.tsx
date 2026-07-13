@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useCart, formatNGN } from "@/lib/cart";
 import { useAuth } from "@/lib/auth";
 import { payWithPaystack } from "@/lib/paystack";
-import { db, paperdbEnabled } from "@/lib/paperdb";
+import { createPendingOrder, markOrderPaid } from "@/lib/orders";
 import { log } from "@/lib/logger";
 
 export const Route = createFileRoute("/checkout")({
@@ -30,50 +30,47 @@ function Checkout() {
     return (
       <div className="container-page py-24 text-center">
         <h1 className="font-display text-3xl">Nothing to checkout</h1>
-        <Link to="/shop" className="btn-primary mt-6 inline-flex">Browse shop</Link>
+        <Link to="/shop" className="btn-primary mt-6 inline-flex">
+          Browse shop
+        </Link>
       </div>
     );
   }
 
-  async function saveOrder(reference: string) {
-    const payload = {
+  function orderPayload(reference: string) {
+    return {
       userId: user?.id ?? null,
       email: form.email,
-      items: items.map((i) => ({ productId: i.productId, name: i.name, price: i.price, quantity: i.quantity })),
+      items: items.map((i) => ({
+        productId: i.productId,
+        name: i.name,
+        price: i.price,
+        quantity: i.quantity,
+      })),
       total: subtotal,
-      status: "paid",
       reference,
       shipping: form,
     };
-    log.event("order:save", { reference, total: subtotal, itemCount: items.length });
-    try {
-      if (paperdbEnabled) await db.orders.insert(payload);
-      else {
-        const key = "shop.orders";
-        const existing = JSON.parse(window.localStorage.getItem(key) ?? "[]");
-        existing.push({ ...payload, _id: reference, createdAt: new Date().toISOString() });
-        window.localStorage.setItem(key, JSON.stringify(existing));
-      }
-      log.info("order:saved", { reference });
-    } catch (err) {
-      log.error("order:save:failed", { error: String(err) });
-    }
   }
 
   async function handlePay(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.email) return;
+    if (!form.email) {
+      log.warn("checkout:submit:missing-email");
+      return;
+    }
     setPlacing(true);
     const reference = `MSN-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     log.event("checkout:submit", { reference, total: subtotal });
     try {
+      await createPendingOrder(orderPayload(reference));
       await payWithPaystack({
         email: form.email,
         amountNGN: subtotal,
         reference,
         metadata: { name: form.name, phone: form.phone },
         onSuccess: async (ref) => {
-          await saveOrder(ref);
+          await markOrderPaid(ref);
           clear();
           navigate({ to: "/account", search: { ok: ref } as never });
         },
@@ -84,7 +81,7 @@ function Checkout() {
       });
     } catch (err) {
       setPlacing(false);
-      log.error("checkout:error", { error: String(err) });
+      log.exception("checkout:error", err);
       alert("Payment could not start. Please try again.");
     }
   }
@@ -94,22 +91,54 @@ function Checkout() {
       <form onSubmit={handlePay} className="md:col-span-3 space-y-5">
         <h1 className="font-display text-4xl">Checkout</h1>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Full name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
-          <Field label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} required />
-          <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} required />
-          <Field label="City" value={form.city} onChange={(v) => setForm({ ...form, city: v })} required />
+          <Field
+            label="Full name"
+            value={form.name}
+            onChange={(v) => setForm({ ...form, name: v })}
+            required
+          />
+          <Field
+            label="Email"
+            type="email"
+            value={form.email}
+            onChange={(v) => setForm({ ...form, email: v })}
+            required
+          />
+          <Field
+            label="Phone"
+            value={form.phone}
+            onChange={(v) => setForm({ ...form, phone: v })}
+            required
+          />
+          <Field
+            label="City"
+            value={form.city}
+            onChange={(v) => setForm({ ...form, city: v })}
+            required
+          />
           <div className="col-span-2">
-            <Field label="Street address" value={form.address} onChange={(v) => setForm({ ...form, address: v })} required />
+            <Field
+              label="Street address"
+              value={form.address}
+              onChange={(v) => setForm({ ...form, address: v })}
+              required
+            />
           </div>
           <div className="col-span-2">
-            <Field label="State" value={form.state} onChange={(v) => setForm({ ...form, state: v })} required />
+            <Field
+              label="State"
+              value={form.state}
+              onChange={(v) => setForm({ ...form, state: v })}
+              required
+            />
           </div>
         </div>
         <button type="submit" disabled={placing} className="btn-accent w-full">
           {placing ? "Processing…" : `Pay ${formatNGN(subtotal)} with Paystack`}
         </button>
         <p className="text-xs text-muted-foreground">
-          Payments are processed securely by Paystack. You'll receive an email receipt on success.
+          Payments are processed securely by Paystack. You'll receive an email
+          receipt on success.
         </p>
       </form>
 
@@ -117,24 +146,38 @@ function Checkout() {
         <h2 className="font-display text-2xl mb-4">Order</h2>
         <ul className="divide-y">
           {items.map((it) => (
-            <li key={it.productId} className="py-3 flex justify-between text-sm">
-              <span>{it.name} × {it.quantity}</span>
+            <li
+              key={it.productId}
+              className="py-3 flex justify-between text-sm"
+            >
+              <span>
+                {it.name} × {it.quantity}
+              </span>
               <span>{formatNGN(it.price * it.quantity)}</span>
             </li>
           ))}
         </ul>
         <div className="mt-4 pt-4 border-t flex justify-between font-medium">
-          <span>Total</span><span>{formatNGN(subtotal)}</span>
+          <span>Total</span>
+          <span>{formatNGN(subtotal)}</span>
         </div>
       </aside>
     </div>
   );
 }
 
-function Field(props: { label: string; value: string; onChange: (v: string) => void; type?: string; required?: boolean }) {
+function Field(props: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  required?: boolean;
+}) {
   return (
     <label className="block">
-      <span className="text-xs uppercase tracking-widest text-muted-foreground">{props.label}</span>
+      <span className="text-xs uppercase tracking-widest text-muted-foreground">
+        {props.label}
+      </span>
       <input
         type={props.type ?? "text"}
         value={props.value}

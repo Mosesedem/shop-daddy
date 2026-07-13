@@ -1,5 +1,6 @@
 type LovableErrorOptions = {
-  mechanism?: "manual" | "onerror" | "unhandledrejection" | "react_error_boundary";
+  mechanism?:
+    "manual" | "onerror" | "unhandledrejection" | "react_error_boundary";
   handled?: boolean;
   severity?: "error" | "warning" | "info";
 };
@@ -18,7 +19,11 @@ declare global {
   }
 }
 
-export function reportLovableError(error: unknown, context: Record<string, unknown> = {}) {
+export function reportLovableError(
+  error: unknown,
+  context: Record<string, unknown> = {},
+) {
+  log.exception("react:error-boundary", error, context);
   if (typeof window === "undefined") return;
   window.__lovableEvents?.captureException?.(
     error,
@@ -34,3 +39,4 @@ export function reportLovableError(error: unknown, context: Record<string, unkno
     },
   );
 }
+import { log } from "./logger";
