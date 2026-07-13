@@ -19,7 +19,6 @@ export async function fetchProducts(): Promise<Product[]> {
   try {
     const docs = await requirePaperDB().products.find({
       limit: 100,
-      sort: "-createdAt",
     });
     const list = (docs?.documents ?? docs ?? []) as Product[];
     if (!list.length)
