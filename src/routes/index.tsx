@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, BoxIcon, Heart, PlaneTakeoff } from "lucide-react";
 import heroImg from "@/assets/hero.jpg";
 import { fetchProducts } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
@@ -106,18 +106,28 @@ function Home() {
             {
               t: "Made slowly",
               d: "We work with small studios and independent makers who take their time.",
+              i: BoxIcon,
+              f: false,
             },
             {
               t: "Shipped kindly",
               d: "Plastic-free packaging, carbon-considered shipping across Nigeria.",
+              i: PlaneTakeoff,
+              f: false,
             },
             {
               t: "Kept forever",
               d: "Quiet objects designed to be used every day and passed on.",
+              i: Heart,
+              f: true,
             },
           ].map((f) => (
             <div key={f.t} className="card-surface p-6">
-              <h3 className="font-display text-xl">{f.t}</h3>
+              <h3 className="font-display text-xl flex gap-2">
+                {" "}
+                <f.i className={f.f ? "fill-red-500 text-red-500 " : ""} />{" "}
+                {f.t}
+              </h3>
               <p className="mt-2 text-sm text-muted-foreground">{f.d}</p>
             </div>
           ))}
