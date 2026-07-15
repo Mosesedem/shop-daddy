@@ -40,11 +40,11 @@ Several SDK design choices make this failure mode common and hard for integrator
 auth.setSessionToken(token);
 
 // 2. Validate
-const user = await auth.getUser();       // GET /auth/me  → 401
+const user = await auth.getUser(); // GET /auth/me  → 401
 
 // 3. Retry via refresh
-auth.setSessionToken(token);             // re-seed (getUser cleared storage)
-await auth.refreshSession();             // POST /auth/refresh → 401
+auth.setSessionToken(token); // re-seed (getUser cleared storage)
+await auth.refreshSession(); // POST /auth/refresh → 401
 
 // 4. Treat as logged out
 ```
@@ -62,11 +62,11 @@ The red stacks under React are **not** React bugs. The browser logs failed `fetc
 
 From `paperdb-js` `AuthClient` (v1.1.0 dist):
 
-| Method | On HTTP error |
-|--------|----------------|
-| `getUser()` | `clearSession()` → return `null` (no throw, no status) |
+| Method             | On HTTP error                                          |
+| ------------------ | ------------------------------------------------------ |
+| `getUser()`        | `clearSession()` → return `null` (no throw, no status) |
 | `refreshSession()` | `clearSession()` → return `null` (no throw, no status) |
-| `request()` | Throws `Error` with message body only |
+| `request()`        | Throws `Error` with message body only                  |
 
 So the app only learns “no user,” not **why** (expired vs revoked vs wrong project vs malformed token).
 
@@ -76,24 +76,24 @@ So the app only learns “no user,” not **why** (expired vs revoked vs wrong p
 
 ### 3.1 Cases that are **application / ops** (not PaperDB bugs)
 
-| Situation | How to tell | Fix |
-|-----------|-------------|-----|
-| User never signed in successfully | No `session.token` in sign-in response | Fix sign-in / credentials |
-| Token deleted from server (sign-out everywhere, admin revoke) | Fresh sign-in works; old token always 401 | Expected |
-| Wrong API key / wrong project | All auth calls fail or user not in project | Align keys |
-| Intentionally short TTL + no refresh token | `/me` 401 after TTL; `/refresh` also 401 if no refresh secret | Product decision |
+| Situation                                                     | How to tell                                                   | Fix                       |
+| ------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------- |
+| User never signed in successfully                             | No `session.token` in sign-in response                        | Fix sign-in / credentials |
+| Token deleted from server (sign-out everywhere, admin revoke) | Fresh sign-in works; old token always 401                     | Expected                  |
+| Wrong API key / wrong project                                 | All auth calls fail or user not in project                    | Align keys                |
+| Intentionally short TTL + no refresh token                    | `/me` 401 after TTL; `/refresh` also 401 if no refresh secret | Product decision          |
 
 ### 3.2 Cases that **are** PaperDB platform/SDK issues
 
-| Situation | Why it’s on PaperDB |
-|-----------|---------------------|
-| **Same token used for `/me` and `/refresh`, both 401** | Refresh cannot work if the only credential is already rejected as access |
-| **No separate refresh token / rotation** | Industry-standard OAuth-like sessions use access + refresh |
-| **`initializeSession()` race** | Constructor fires async refresh with no `ready` promise; apps race it |
-| **Silent failures** | Integrators cannot branch on 401 vs 5xx vs network |
-| **Bearer fallback to API key** | `Authorization: Bearer <apiKey>` when session missing confuses debugging and authn |
-| **Token storage is opaque** | Only `paperdb_session_token` string; no `expiresAt` → no proactive refresh |
-| **Docs imply Clerk-like restore** | Integrators assume `getUser()` after reload “just works” |
+| Situation                                              | Why it’s on PaperDB                                                                |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| **Same token used for `/me` and `/refresh`, both 401** | Refresh cannot work if the only credential is already rejected as access           |
+| **No separate refresh token / rotation**               | Industry-standard OAuth-like sessions use access + refresh                         |
+| **`initializeSession()` race**                         | Constructor fires async refresh with no `ready` promise; apps race it              |
+| **Silent failures**                                    | Integrators cannot branch on 401 vs 5xx vs network                                 |
+| **Bearer fallback to API key**                         | `Authorization: Bearer <apiKey>` when session missing confuses debugging and authn |
+| **Token storage is opaque**                            | Only `paperdb_session_token` string; no `expiresAt` → no proactive refresh         |
+| **Docs imply Clerk-like restore**                      | Integrators assume `getUser()` after reload “just works”                           |
 
 **Conclusion:** A single 401 on `/me` after long idle can be normal expiry. **Back-to-back 401 on `/me` then `/refresh` with the same bearer is a session-design smell** and should be treated as a platform gap until PaperDB documents and implements a real refresh protocol.
 
@@ -125,7 +125,7 @@ if (this.sessionToken) {
   headers["Authorization"] = `Bearer ${this.sessionToken}`;
 }
 if (!headers["Authorization"] && this.apiKey) {
-  headers["Authorization"] = `Bearer ${this.apiKey}`;  // ← dual meaning of Bearer
+  headers["Authorization"] = `Bearer ${this.apiKey}`; // ← dual meaning of Bearer
 }
 ```
 
@@ -180,7 +180,7 @@ If the API treats the session token as a short-lived **access** JWT:
 
 A general fix requires either:
 
-- **A)** Long-lived session tokens that `/me` accepts until explicit logout (then refresh is optional), or  
+- **A)** Long-lived session tokens that `/me` accepts until explicit logout (then refresh is optional), or
 - **B)** Access + refresh pair (refresh endpoint requires refresh token / separate cookie).
 
 Today the SDK API surface implies **B** (`refreshSession`) but implements **A’s storage model** (single string). That inconsistency is the core product bug.
@@ -213,22 +213,22 @@ PaperDB API maintainers should verify each of the following against production l
 
 ### 5.1 Session lookup
 
-| Check | Question |
-|-------|----------|
-| Token format | Opaque ID vs JWT? Is the client storing the full value returned by `/sign-in`? |
-| Hashing | Is the DB storing a hash and comparing correctly? |
-| Project scope | Is the session bound to `X-API-Key` / project? Mismatch → 401 |
-| User deleted | Session row exists but user missing → should be 401 with clear code |
-| Expiry | Is `expiresAt` enforced on `/me`? |
+| Check         | Question                                                                       |
+| ------------- | ------------------------------------------------------------------------------ |
+| Token format  | Opaque ID vs JWT? Is the client storing the full value returned by `/sign-in`? |
+| Hashing       | Is the DB storing a hash and comparing correctly?                              |
+| Project scope | Is the session bound to `X-API-Key` / project? Mismatch → 401                  |
+| User deleted  | Session row exists but user missing → should be 401 with clear code            |
+| Expiry        | Is `expiresAt` enforced on `/me`?                                              |
 
 ### 5.2 Refresh semantics
 
-| Check | Question |
-|-------|----------|
-| What does `/auth/refresh` require? | Same session token? Separate refresh token? Body field? |
-| Does it allow expired sessions? | If not, document that clients must re-login after TTL |
-| Does it rotate tokens? | Old token invalidated without client updating storage → immediate next 401 |
-| Response shape | Does it return `{ user, session: { token, expiresAt } }` matching SDK? |
+| Check                              | Question                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------- |
+| What does `/auth/refresh` require? | Same session token? Separate refresh token? Body field?                    |
+| Does it allow expired sessions?    | If not, document that clients must re-login after TTL                      |
+| Does it rotate tokens?             | Old token invalidated without client updating storage → immediate next 401 |
+| Response shape                     | Does it return `{ user, session: { token, expiresAt } }` matching SDK?     |
 
 ### 5.3 Header authentication order
 
@@ -255,15 +255,15 @@ SDK uses `credentials: "omit"`. Confirm:
 
 ## 6. Reproduction matrix (for PaperDB QA)
 
-| # | Steps | Expected (healthy) | Broken today |
-|---|--------|--------------------|--------------|
-| 1 | Sign in → immediately `getUser()` | 200 + user | — |
-| 2 | Sign in → reload page → `getUser()` | 200 + user | **401** (reported) |
-| 3 | Sign in → wait past TTL → `getUser()` | 401 | 401 |
-| 4 | After TTL → `refreshSession()` | 200 + new session | **401** (reported) |
-| 5 | Sign out → `getUser()` | null / 401 | — |
-| 6 | Valid session + wrong `X-API-Key` | 401 with project error | ? |
-| 7 | Two tabs: sign out in A, action in B | clear / re-login | ? |
+| #   | Steps                                 | Expected (healthy)     | Broken today       |
+| --- | ------------------------------------- | ---------------------- | ------------------ |
+| 1   | Sign in → immediately `getUser()`     | 200 + user             | —                  |
+| 2   | Sign in → reload page → `getUser()`   | 200 + user             | **401** (reported) |
+| 3   | Sign in → wait past TTL → `getUser()` | 401                    | 401                |
+| 4   | After TTL → `refreshSession()`        | 200 + new session      | **401** (reported) |
+| 5   | Sign out → `getUser()`                | null / 401             | —                  |
+| 6   | Valid session + wrong `X-API-Key`     | 401 with project error | ?                  |
+| 7   | Two tabs: sign out in A, action in B  | clear / re-login       | ?                  |
 
 **Critical test:** After a successful `/sign-in`, copy `session.token` and call:
 
@@ -309,10 +309,10 @@ curl -sS -D- -X POST "https://api.paperdb.app/auth/refresh" \
 
 **Pick one model and document it:**
 
-| Model | `/auth/me` | `/auth/refresh` | Client storage |
-|-------|------------|-----------------|----------------|
-| **A. Opaque long session** | Accepts session token until expiry/logout | Optional; can extend `expiresAt` | Single token + `expiresAt` |
-| **B. Access + refresh (recommended)** | Accepts access only | Requires refresh token (header or body); returns new access (+ rotate refresh) | Access + refresh + expiries |
+| Model                                 | `/auth/me`                                | `/auth/refresh`                                                                | Client storage              |
+| ------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------ | --------------------------- |
+| **A. Opaque long session**            | Accepts session token until expiry/logout | Optional; can extend `expiresAt`                                               | Single token + `expiresAt`  |
+| **B. Access + refresh (recommended)** | Accepts access only                       | Requires refresh token (header or body); returns new access (+ rotate refresh) | Access + refresh + expiries |
 
 Do **not** expose a `refreshSession()` SDK method that simply replays a dead access token unless Model A allows extending via that same token **before** hard expiry.
 
@@ -489,7 +489,9 @@ function usePaperDBUser() {
         setStatus("error");
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
   return { user, status };
 }
@@ -501,13 +503,13 @@ function usePaperDBUser() {
 
 Add a page: **“Auth sessions & restore”** covering:
 
-1. Token model (A or B) and TTLs  
-2. Exactly which headers `/sign-in`, `/me`, `/refresh`, `/sign-out` require  
-3. `localStorage` keys the SDK owns (`paperdb_session_token` / v2)  
-4. “Do not reimplement session storage unless necessary”  
-5. How to debug 401 (table from §6 curl tests)  
-6. CORS + `credentials: "omit"` implications  
-7. React Strict Mode double-invoke note  
+1. Token model (A or B) and TTLs
+2. Exactly which headers `/sign-in`, `/me`, `/refresh`, `/sign-out` require
+3. `localStorage` keys the SDK owns (`paperdb_session_token` / v2)
+4. “Do not reimplement session storage unless necessary”
+5. How to debug 401 (table from §6 curl tests)
+6. CORS + `credentials: "omit"` implications
+7. React Strict Mode double-invoke note
 
 ---
 
@@ -515,25 +517,25 @@ Add a page: **“Auth sessions & restore”** covering:
 
 Even before full access/refresh split, ship this in a patch release:
 
-1. **`auth.ready` Promise** after `initializeSession`.  
-2. **Stop clearing session on non-401 errors**.  
-3. **Propagate `code` + `status` on auth errors** (parse JSON body).  
-4. **Persist `expiresAt`** next to token when API returns it.  
-5. **If `/me` returns `SESSION_EXPIRED`, call `/refresh` once automatically** before giving up (only if API supports refresh with current token).  
-6. **Remove `Authorization: Bearer <apiKey>` fallback** for `/auth/*` user routes (keep `X-API-Key` only).  
+1. **`auth.ready` Promise** after `initializeSession`.
+2. **Stop clearing session on non-401 errors**.
+3. **Propagate `code` + `status` on auth errors** (parse JSON body).
+4. **Persist `expiresAt`** next to token when API returns it.
+5. **If `/me` returns `SESSION_EXPIRED`, call `/refresh` once automatically** before giving up (only if API supports refresh with current token).
+6. **Remove `Authorization: Bearer <apiKey>` fallback** for `/auth/*` user routes (keep `X-API-Key` only).
 7. **Docs:** dual 401 means “session dead; re-login” until refresh works.
 
 ---
 
 ## 9. What integrators should do until PaperDB ships fixes
 
-1. **Treat dual 401 as logged out** — clear app state; do not trust cached user profiles.  
-2. **Prefer SDK storage** (`paperdb_session_token` / future v2) as source of truth; avoid a second parallel session blob unless synced.  
-3. **`await` a readiness gate** if you polyfill one (wrap first `getUser` after client create).  
+1. **Treat dual 401 as logged out** — clear app state; do not trust cached user profiles.
+2. **Prefer SDK storage** (`paperdb_session_token` / future v2) as source of truth; avoid a second parallel session blob unless synced.
+3. **`await` a readiness gate** if you polyfill one (wrap first `getUser` after client create).
 4. **After sign-in**, verify Network tab:
    - Response includes `session.token`
-   - Next `/me` uses that exact token  
-5. **Manual curl** of token immediately after sign-in (matrix §6).  
+   - Next `/me` uses that exact token
+5. **Manual curl** of token immediately after sign-in (matrix §6).
 6. **Log auth error bodies** (temporarily patch or wrap `fetch`) to capture PaperDB `code`/`message`.
 
 Shop Daddy currently follows (1)–(2) after the app-side restore fix; remaining dual 401s with a **fresh** token indicate API/session issuance bugs.
@@ -544,15 +546,15 @@ Shop Daddy currently follows (1)–(2) after the app-side restore fix; remaining
 
 Please confirm and track:
 
-| ID | Question | Owner |
-|----|----------|--------|
-| Q1 | Immediately after `/auth/sign-in`, does the returned `session.token` succeed on `/auth/me`? | API |
-| Q2 | What credential is `/auth/refresh` supposed to accept? Same token or separate refresh token? | API + Docs |
-| Q3 | What is default session TTL? Is it enforced? | API |
-| Q4 | Are sessions scoped to project (`X-API-Key`)? | API |
-| Q5 | Will SDK persist `expiresAt` + expose `auth.ready`? | SDK |
-| Q6 | Will 401 responses include stable machine-readable `code`? | API |
-| Q7 | Can constructor auto-refresh be deferred until `getUser` / `ready` to avoid races? | SDK |
+| ID  | Question                                                                                     | Owner      |
+| --- | -------------------------------------------------------------------------------------------- | ---------- |
+| Q1  | Immediately after `/auth/sign-in`, does the returned `session.token` succeed on `/auth/me`?  | API        |
+| Q2  | What credential is `/auth/refresh` supposed to accept? Same token or separate refresh token? | API + Docs |
+| Q3  | What is default session TTL? Is it enforced?                                                 | API        |
+| Q4  | Are sessions scoped to project (`X-API-Key`)?                                                | API        |
+| Q5  | Will SDK persist `expiresAt` + expose `auth.ready`?                                          | SDK        |
+| Q6  | Will 401 responses include stable machine-readable `code`?                                   | API        |
+| Q7  | Can constructor auto-refresh be deferred until `getUser` / `ready` to avoid races?           | SDK        |
 
 ---
 
@@ -606,17 +608,17 @@ if (!headers["Authorization"] && this.apiKey) {
 
 ## 12. Bottom line
 
-| Layer | Verdict |
-|-------|---------|
-| Browser red stack | Cosmetic; failed `fetch` logging |
-| App restore using cached user after 401 | App bug (fixed in Shop Daddy) |
-| `GET /auth/me` 401 with stored token | Session invalid/expired **or** token not accepted by API |
+| Layer                                        | Verdict                                                                                                                 |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Browser red stack                            | Cosmetic; failed `fetch` logging                                                                                        |
+| App restore using cached user after 401      | App bug (fixed in Shop Daddy)                                                                                           |
+| `GET /auth/me` 401 with stored token         | Session invalid/expired **or** token not accepted by API                                                                |
 | `POST /auth/refresh` 401 with **same** token | **PaperDB session/refresh design gap** unless TTL policy is “re-login only” and refresh is documented as non-recovering |
-| General fix | Explicit access/refresh (or long session) contract + SDK ready/persist/errors + docs |
+| General fix                                  | Explicit access/refresh (or long session) contract + SDK ready/persist/errors + docs                                    |
 
 **If a brand-new sign-in token fails `/me` without waiting for TTL, treat it as a Sev-1 PaperDB API bug.**  
 **If only old tokens fail both `/me` and `/refresh`, treat refresh as unimplemented/broken and ship Phase 1–2 above.**
 
 ---
 
-**End of report.**
+**End of report. and shared**
