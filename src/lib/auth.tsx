@@ -51,6 +51,28 @@ function persist(s: Session) {
   else window.localStorage.removeItem(STORAGE);
 }
 
+function readStoredSession(): Session {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE);
+    if (!raw) return null;
+    return JSON.parse(raw) as Session;
+  } catch {
+    return null;
+  }
+}
+
+/** Live session token: app storage, then PaperDB SDK memory/storage. */
+function resolveToken(stored: Session): string | null {
+  const auth = requirePaperDB().auth;
+  return (
+    stored?.token ||
+    auth.getSessionToken?.() ||
+    auth.getToken?.() ||
+    null
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,32 +81,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     async function restore() {
       log.event("auth:restore:start");
-      const raw = window.localStorage.getItem(STORAGE);
-      const stored = raw ? (JSON.parse(raw) as Session) : null;
+      const stored = readStoredSession();
+      const auth = requirePaperDB().auth;
 
       try {
-        if (stored?.token) {
-          requirePaperDB().auth.setSessionToken?.(stored.token);
+        const token = resolveToken(stored);
+
+        // No session token → not authenticated. Drop any orphaned profile cache.
+        if (!token) {
+          if (stored?.user) {
+            log.warn("auth:restore:stale-user-without-token", {
+              email: stored.user.email,
+            });
+            persist(null);
+          }
+          return;
         }
-        const paperUser = await requirePaperDB().auth.getUser();
+
+        // Seed PaperDB's in-memory + paperdb_session_token before /auth/me.
+        auth.setSessionToken?.(token);
+
+        // Validate with API. paperdb-js getUser() returns null on 401 and
+        // clears its own token — it does not throw.
+        let paperUser = await auth.getUser();
+
+        // One refresh attempt if /me failed but we still had a token.
+        if (!paperUser) {
+          log.warn("auth:restore:me-failed-trying-refresh");
+          // Re-seed in case getUser cleared paperdb storage.
+          auth.setSessionToken?.(token);
+          const refreshed = await auth.refreshSession?.();
+          if (refreshed) {
+            paperUser = await auth.getUser();
+          }
+        }
+
         if (paperUser) {
-          const restored = mapPaperDBUser(paperUser, stored?.user.email ?? "");
+          const restored = mapPaperDBUser(
+            paperUser,
+            stored?.user.email ?? paperUser.email ?? "",
+          );
+          const liveToken =
+            auth.getSessionToken?.() || auth.getToken?.() || token;
           if (!cancelled) setUser(restored);
-          persist({ token: stored?.token, user: restored });
+          persist({ token: liveToken, user: restored });
           log.info("auth:restore:success", { email: restored.email });
           return;
         }
-        if (stored?.user) {
-          const restored = {
-            ...stored.user,
-            isAdmin: isAdminUser(stored.user),
-          };
-          if (!cancelled) setUser(restored);
-          log.warn("auth:restore:using-stored-user", { email: restored.email });
-        }
+
+        // /auth/me (and refresh) rejected the session — do NOT trust
+        // localStorage user alone. That produced a fake "logged in" UI.
+        log.warn("auth:restore:session-invalid", {
+          email: stored?.user?.email,
+          reason: "auth/me returned 401 or null",
+        });
+        persist(null);
+        if (!cancelled) setUser(null);
       } catch (err) {
         log.exception("auth:restore:failed", err);
         persist(null);
+        if (!cancelled) setUser(null);
       } finally {
         if (!cancelled) setLoading(false);
         log.info("auth:ready");
@@ -101,9 +157,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const r = await requirePaperDB().auth.signIn({ email, password });
       const u = mapPaperDBUser(r.user, email);
-      persist({ token: r.session?.token, user: u });
+      const token = r.session?.token;
+      if (!token) {
+        log.error("auth:signin:missing-session-token", { email });
+        throw new Error(
+          "Sign-in succeeded but no session token was returned. Check PaperDB auth response.",
+        );
+      }
+      // Keep PaperDB + app storage aligned.
+      requirePaperDB().auth.setSessionToken?.(token);
+      persist({ token, user: u });
       setUser(u);
-      log.info("auth:signin:success", { email });
+      log.info("auth:signin:success", {
+        email,
+        sessionId: r.session?.id,
+        expiresAt: r.session?.expiresAt,
+      });
     } catch (err) {
       log.exception("auth:signin:failed", err, { email });
       throw err;
@@ -115,9 +184,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const r = await requirePaperDB().auth.signUp({ email, password, name });
       const u = mapPaperDBUser(r.user, email, name);
-      persist({ token: r.session?.token, user: u });
+      const token = r.session?.token;
+      if (!token) {
+        log.error("auth:signup:missing-session-token", { email });
+        throw new Error(
+          "Sign-up succeeded but no session token was returned. Check PaperDB auth response.",
+        );
+      }
+      requirePaperDB().auth.setSessionToken?.(token);
+      persist({ token, user: u });
       setUser(u);
-      log.info("auth:signup:success", { email });
+      log.info("auth:signup:success", {
+        email,
+        sessionId: r.session?.id,
+        expiresAt: r.session?.expiresAt,
+      });
     } catch (err) {
       log.exception("auth:signup:failed", err, { email });
       throw err;

@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
-    "@paperdb-js/react": "^1.0.0",
+    "@paperdb-js/react": "^1.1.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.8",
@@ -54,7 +54,7 @@
     "input-otp": "^1.4.2",
     "logstack-js": "^1.0.2",
     "lucide-react": "^0.575.0",
-    "paperdb-js": "^1.0.0",
+    "paperdb-js": "^1.1.1",
     "react": "^19.2.0",
     "react-day-picker": "^9.14.0",
     "react-dom": "^19.2.0",
