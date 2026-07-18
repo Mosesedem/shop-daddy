@@ -59,7 +59,9 @@ preloads: ["/assets/index-….js", "/assets/logger-….js"]
 scripts: [{ attrs: { type: "module", async: true, src: "/assets/index-….js" } }]
 ```
 
-## Fix
+## Fix (two layers)
+
+### 1. Nitro preset must be Vercel
 
 Pin Nitro’s preset to Vercel in `vite.config.ts`:
 
@@ -75,11 +77,39 @@ export default defineConfig({
 });
 ```
 
-Then rebuild and redeploy. The Vercel build output should include:
+### 2. Custom `server.ts` must not use the broken package entry
+
+This app wraps SSR in `server.ts` (Paystack webhook + error page). The wrapper
+originally did:
+
+```ts
+import("@tanstack/react-start/server-entry")
+```
+
+After Nitro bundles that path, it imports the **empty/dev** manifest
+(`_tanstack-start-manifest_v.mjs`) even when a correct hashed manifest exists.
+
+Nitro also builds a proper SSR service (`.vercel/output/.../_ssr/ssr.mjs`) that
+imports the production manifest. `server.ts` now prefers that:
+
+```ts
+const nitroEnvs = globalThis.__nitro_vite_envs__;
+if (nitroEnvs?.ssr?.fetch) return nitroEnvs.ssr;
+// fallback for vite dev only:
+return (await import("@tanstack/react-start/server-entry")).default;
+```
+
+### 3. Post-build safety net
+
+`pnpm build` runs `scripts/fix-start-manifest.mjs`, which rewrites the empty
+manifest file to re-export the hashed production one so *any* import path is safe.
+
+After rebuild, Vercel output should include:
 
 - `.vercel/output/static/assets/*.js` (client chunks)
 - `.vercel/output/functions/__server.func/` (SSR)
 - `.vercel/output/config.json` routes that serve `/assets/*` from the filesystem
+- `_tanstack-start-manifest_v.mjs` re-exporting `_tanstack-start-manifest_v-*.mjs`
 
 ## After redeploy checklist
 

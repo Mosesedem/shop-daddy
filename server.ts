@@ -8,20 +8,50 @@ import { handlePaystackWebhook } from "./src/lib/paystack-webhook";
 type ServerEntry = {
   fetch: (
     request: Request,
-    env: unknown,
-    ctx: unknown,
+    env?: unknown,
+    ctx?: unknown,
   ) => Promise<Response> | Response;
+};
+
+type NitroViteEnvs = {
+  ssr?: ServerEntry;
 };
 
 let serverEntryPromise: Promise<ServerEntry> | undefined;
 
+/**
+ * Resolve the TanStack Start SSR handler.
+ *
+ * Nitro's multi-env build embeds the *production* client asset manifest in the
+ * `ssr` service (real `/assets/index-*.js` URLs). Prefer that when available.
+ *
+ * Falling back to `@tanstack/react-start/server-entry` is required for `vite dev`,
+ * but that package path is bundled against an empty/dev manifest
+ * (`/@id/virtual:tanstack-start-dev-client-entry`) — which breaks production with:
+ * "Failed to load module script … MIME type of text/html".
+ */
 async function getServerEntry(): Promise<ServerEntry> {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("@tanstack/react-start/server-entry").then(
-      (m) => (m.default ?? m) as ServerEntry,
-    );
+    serverEntryPromise = resolveServerEntry();
   }
   return serverEntryPromise;
+}
+
+async function resolveServerEntry(): Promise<ServerEntry> {
+  const nitroEnvs = (
+    globalThis as typeof globalThis & {
+      __nitro_vite_envs__?: NitroViteEnvs;
+    }
+  ).__nitro_vite_envs__;
+
+  if (nitroEnvs?.ssr && typeof nitroEnvs.ssr.fetch === "function") {
+    log.info("ssr:entry", { source: "nitro-ssr-env" });
+    return nitroEnvs.ssr;
+  }
+
+  log.info("ssr:entry", { source: "tanstack-server-entry" });
+  const m = await import("@tanstack/react-start/server-entry");
+  return (m.default ?? m) as ServerEntry;
 }
 
 // h3 swallows in-handler throws into a normal 500 Response with body
